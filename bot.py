@@ -267,7 +267,12 @@ class Grandline:
 
             nft_price = web3.to_wei(1, "ether")
 
-            proof = ( [], 2**256 - 1, 0, self.ZERO_ADDRESS )           
+            proof = {
+                "proof": [],
+                "quantityLimitPerWallet": 0,
+                "pricePerToken": 2**256 - 1,
+                "currency": self.ZERO_ADDRESS
+            }
 
             contract_address = web3.to_checksum_address(nft_contract_address)
             token_contract = web3.eth.contract(address=contract_address, abi=self.GRANDLINE_CONTRACT_ABI)
@@ -371,7 +376,6 @@ class Grandline:
                         addresses = re.findall(r'0x[a-fA-F0-9]{40}', resp_text, re.IGNORECASE)
                         return addresses if addresses else None
             except (Exception, ClientResponseError) as e:
-                self.log(str(e))
                 if attempt < retries:
                     await asyncio.sleep(5)
                     continue
