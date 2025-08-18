@@ -366,7 +366,7 @@ class Grandline:
             return None
         
     async def fetch_nft_addresses(self, retries=5):
-        url = f"{self.HOST_API}/_next/static/chunks/78163-e2fc267a5b866cc2.js?dpl=dpl_DGtnGWx8uE2TV6NUnuX8QhQsY3Z7"
+        url = f"{self.HOST_API}/_next/static/chunks/78163-0a02dd8b480b7f12.js"
         for attempt in range(retries):
             try:
                 async with ClientSession(timeout=ClientTimeout(total=60)) as session:
