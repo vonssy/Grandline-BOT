@@ -366,17 +366,37 @@ class Grandline:
             return None
         
     async def fetch_nft_addresses(self, retries=5):
-        url = f"{self.HOST_API}/_next/static/chunks/78163-0a02dd8b480b7f12.js"
         for attempt in range(retries):
             try:
                 async with ClientSession(timeout=ClientTimeout(total=60)) as session:
-                    async with session.get(url=url) as response:
+                    async with session.get(url=self.HOST_API) as response:
                         response.raise_for_status()
-                        resp_text = await response.text()
-                        addresses = re.findall(r'0x[a-fA-F0-9]{40}', resp_text, re.IGNORECASE)
-                        return addresses if addresses else None
-            except (Exception, ClientResponseError) as e:
-                if attempt < retries:
+                        html = await response.text()
+
+                    js_files = re.findall(r'/_next/static/chunks/[0-9a-zA-Z\-]+\.js', html)
+                    if not js_files:
+                        return None
+
+                    target_files = [f for f in js_files if f.startswith("/_next/static/chunks/78163")]
+
+                    if not target_files:
+                        target_files = js_files
+
+                    for js_file in target_files:
+                        js_url = f"{self.HOST_API}{js_file}"
+
+                        async with session.get(js_url) as response:
+                            response.raise_for_status()
+                            resp_text = await response.text()
+
+                            match = re.search(r'getAllCollectionAddress\(\)\s*{\s*return\s*(\[[^\]]+\])', resp_text)
+                            if match:
+                                addresses = re.findall(r'0x[a-fA-F0-9]{40}', match.group(1))
+                                if addresses:
+                                    return addresses
+                                
+            except Exception:
+                if attempt < retries - 1:
                     await asyncio.sleep(5)
                     continue
                 return None
@@ -540,7 +560,7 @@ class Grandline:
             with open('accounts.txt', 'r') as file:
                 accounts = [line.strip() for line in file if line.strip()]
             
-            use_proxy, rotate_proxy = self.print_question()
+            proxy_choice, rotate_proxy = self.print_question()
 
             print(f"\n{Fore.BLUE+Style.BRIGHT}Fetch NFT Contract Addresses...{Style.RESET_ALL}\n")
             await asyncio.sleep(1)
@@ -549,7 +569,7 @@ class Grandline:
             if not fetched: return
 
             while True:
-                use_proxy = True if use_proxy == 1 else False
+                use_proxy = True if proxy_choice == 1 else False
 
                 self.clear_terminal()
                 self.welcome()
