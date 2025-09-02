@@ -325,10 +325,10 @@ class Grandline:
             try:
                 print(f"{Fore.WHITE + Style.BRIGHT}1. Run With Proxy{Style.RESET_ALL}")
                 print(f"{Fore.WHITE + Style.BRIGHT}2. Run Without Proxy{Style.RESET_ALL}")
-                use_proxy = int(input(f"{Fore.BLUE + Style.BRIGHT}Choose [1/2] -> {Style.RESET_ALL}").strip())
+                proxy_choice = int(input(f"{Fore.BLUE + Style.BRIGHT}Choose [1/2] -> {Style.RESET_ALL}").strip())
 
-                if use_proxy in [1, 2]:
-                    type = "With" if use_proxy == 1 else "Without"
+                if proxy_choice in [1, 2]:
+                    type = "With" if proxy_choice == 1 else "Without"
                     print(f"{Fore.GREEN + Style.BRIGHT}Run {type} Proxy Selected.{Style.RESET_ALL}")
                     break
                 else:
@@ -337,7 +337,7 @@ class Grandline:
                 print(f"{Fore.RED + Style.BRIGHT}Invalid input. Enter a number (1 or 2).{Style.RESET_ALL}")
 
         rotate_proxy = False
-        if use_proxy == 1:
+        if proxy_choice == 1:
             while True:
                 rotate_proxy = input(f"{Fore.BLUE + Style.BRIGHT}Rotate Invalid Proxy? [y/n] -> {Style.RESET_ALL}").strip()
 
@@ -347,7 +347,7 @@ class Grandline:
                 else:
                     print(f"{Fore.RED + Style.BRIGHT}Invalid input. Enter 'y' or 'n'.{Style.RESET_ALL}")
 
-        return use_proxy, rotate_proxy
+        return proxy_choice, rotate_proxy
     
     async def check_connection(self, proxy_url=None):
         connector, proxy, proxy_auth = self.build_proxy_config(proxy_url)
