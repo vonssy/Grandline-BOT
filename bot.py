@@ -23,9 +23,19 @@ HEADERS = {
 
 class Grandline:
     def __init__(self) -> None:
-        self.HOST_API = "https://app.grandline.world"
         self.BASE_API = "https://api.grandline.world"
-        self.RPC_URL = "https://testnet.dplabs-internal.com/"
+        self.TESTNET = {
+            "name": "Testnet",
+            "host_api": "https://app.grandline.world/",
+            "rpc_url": "https://testnet.dplabs-internal.com/",
+            "explorer": "https://testnet.pharosscan.xyz/tx/",
+        }
+        self.ATLANTIC = {
+            "name": "Atlantic",
+            "host_api": "https://atlantic.grandline.world",
+            "rpc_url": "https://atlantic.dplabs-internal.com/",
+            "explorer": "https://atlantic.pharosscan.xyz/tx/",
+        }
         self.NATIVE_ADDRESS = "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE"
         self.ZERO_ADDRESS = "0x0000000000000000000000000000000000000000"
         self.ERC20_CONTRACT_ABI = json.loads('''[
@@ -72,7 +82,6 @@ class Grandline:
         self.proxies = []
         self.proxy_index = 0
         self.account_proxies = {}
-        self.used_nonce = {}
 
     def clear_terminal(self):
         os.system('cls' if os.name == 'nt' else 'clear')
@@ -180,7 +189,7 @@ class Grandline:
         except Exception as e:
             return None
         
-    async def get_web3_with_check(self, address: str, use_proxy: bool, retries=3, timeout=60):
+    async def get_web3_with_check(self, address: str, network: dict, use_proxy: bool, retries=3, timeout=60):
         request_kwargs = {"timeout": timeout}
 
         proxy = self.get_next_proxy_for_account(address) if use_proxy else None
@@ -190,7 +199,7 @@ class Grandline:
 
         for attempt in range(retries):
             try:
-                web3 = Web3(Web3.HTTPProvider(self.RPC_URL, request_kwargs=request_kwargs))
+                web3 = Web3(Web3.HTTPProvider(network["rpc_url"], request_kwargs=request_kwargs))
                 web3.eth.get_block_number()
                 return web3
             except Exception as e:
@@ -199,9 +208,9 @@ class Grandline:
                     continue
                 raise Exception(f"Failed to Connect to RPC: {str(e)}")
         
-    async def get_token_balance(self, address: str, use_proxy: bool):
+    async def get_token_balance(self, address: str, network: dict, use_proxy: bool):
         try:
-            web3 = await self.get_web3_with_check(address, use_proxy)
+            web3 = await self.get_web3_with_check(address, network, use_proxy)
 
             balance = web3.eth.get_balance(address)
 
@@ -247,9 +256,9 @@ class Grandline:
             await asyncio.sleep(2 ** attempt)
         raise Exception("Transaction Receipt Not Found After Maximum Retries")
     
-    async def check_nft_status(self, address: str, nft_contract_address: str, use_proxy: bool):
+    async def check_nft_status(self, address: str, network: dict, nft_contract_address: str, use_proxy: bool):
         try:
-            web3 = await self.get_web3_with_check(address, use_proxy)
+            web3 = await self.get_web3_with_check(address, network, use_proxy)
             token_contract = web3.eth.contract(address=web3.to_checksum_address(nft_contract_address), abi=self.GRANDLINE_CONTRACT_ABI)
             amount = token_contract.functions.balanceOf(address).call()
 
@@ -261,11 +270,11 @@ class Grandline:
             )
             return None
         
-    async def perform_claim_nft(self, account: str, address: str, nft_contract_address: str, use_proxy: bool):
+    async def perform_claim_nft(self, account: str, address: str, network: dict, nft_contract_address: str, price: float, use_proxy: bool):
         try:
-            web3 = await self.get_web3_with_check(address, use_proxy)
+            web3 = await self.get_web3_with_check(address, network, use_proxy)
 
-            nft_price = web3.to_wei(1, "ether")
+            nft_price = web3.to_wei(price, "ether")
 
             proof = {
                 "proof": [],
@@ -289,7 +298,7 @@ class Grandline:
                 "gas": int(estimated_gas * 1.2),
                 "maxFeePerGas": int(max_fee),
                 "maxPriorityFeePerGas": int(max_priority_fee),
-                "nonce": self.used_nonce[address],
+                "nonce": web3.eth.get_transaction_count(address, "pending"),
                 "chainId": web3.eth.chain_id,
             })
 
@@ -297,7 +306,6 @@ class Grandline:
             receipt = await self.wait_for_receipt_with_retries(web3, tx_hash)
 
             block_number = receipt.blockNumber
-            self.used_nonce[address] += 1
 
             return tx_hash, block_number
         except Exception as e:
@@ -365,11 +373,12 @@ class Grandline:
             )
             return None
         
-    async def fetch_nft_addresses(self, retries=5):
+    async def fetch_nft_addresses(self, network, retries=5):
+        url = network["host_api"]
         for attempt in range(retries):
             try:
                 async with ClientSession(timeout=ClientTimeout(total=60)) as session:
-                    async with session.get(url=self.HOST_API) as response:
+                    async with session.get(url=url) as response:
                         response.raise_for_status()
                         html = await response.text()
 
@@ -383,7 +392,7 @@ class Grandline:
                         target_files = js_files
 
                     for js_file in target_files:
-                        js_url = f"{self.HOST_API}{js_file}"
+                        js_url = f"{url}{js_file}"
 
                         async with session.get(js_url) as response:
                             response.raise_for_status()
@@ -434,8 +443,8 @@ class Grandline:
             
             return True
         
-    async def process_fetch_nft_addresses(self):
-        addresses = await self.fetch_nft_addresses()
+    async def process_fetch_nft_addresses(self, network: dict):
+        addresses = await self.fetch_nft_addresses(network)
         if not addresses:
             print(f"{Fore.RED+Style.BRIGHT}Fetch NFT Contract Addresses Failed{Style.RESET_ALL}")
             return False
@@ -452,7 +461,7 @@ class Grandline:
                     f"{Fore.GREEN+Style.BRIGHT} Success {Style.RESET_ALL}"
                 )
 
-                self.NFT_LISTS.append({"name": nft_name, "address": nft_contract_address})
+                self.NFT_LISTS.append({"network": network["name"],"name": nft_name, "address": nft_contract_address})
 
             else:
                 print(
@@ -466,11 +475,9 @@ class Grandline:
 
         return True
 
-    async def process_perform_claim_nft(self, account: str, address: str, nft_contract_address: str, use_proxy: bool):
-        tx_hash, block_number = await self.perform_claim_nft(account, address, nft_contract_address, use_proxy)
+    async def process_perform_claim_nft(self, account: str, address: str, network: dict, nft_contract_address: str, nft_price: float, use_proxy: bool):
+        tx_hash, block_number = await self.perform_claim_nft(account, address, network, nft_contract_address, nft_price, use_proxy)
         if tx_hash and block_number:
-            explorer = f"https://testnet.pharosscan.xyz/tx/{tx_hash}"
-
             self.log(
                 f"{Fore.CYAN+Style.BRIGHT}   Status  :{Style.RESET_ALL}"
                 f"{Fore.GREEN+Style.BRIGHT} Success {Style.RESET_ALL}"
@@ -485,7 +492,7 @@ class Grandline:
             )
             self.log(
                 f"{Fore.CYAN+Style.BRIGHT}   Explorer:{Style.RESET_ALL}"
-                f"{Fore.WHITE+Style.BRIGHT} {explorer} {Style.RESET_ALL}"
+                f"{Fore.WHITE+Style.BRIGHT} {network['explorer']}{tx_hash} {Style.RESET_ALL}"
             )
         else:
             self.log(
@@ -497,30 +504,20 @@ class Grandline:
         is_valid = await self.process_check_connection(address, use_proxy, rotate_proxy)
         if is_valid:
             
-            try:
-                web3 = await self.get_web3_with_check(address, use_proxy)
-            except Exception as e:
-                self.log(
-                    f"{Fore.CYAN+Style.BRIGHT}Status  :{Style.RESET_ALL}"
-                    f"{Fore.RED+Style.BRIGHT} Web3 Not Connected {Style.RESET_ALL}"
-                    f"{Fore.MAGENTA+Style.BRIGHT}-{Style.RESET_ALL}"
-                    f"{Fore.YELLOW+Style.BRIGHT} {str(e)} {Style.RESET_ALL}"
-                )
-                return
-            
-            self.used_nonce[address] = web3.eth.get_transaction_count(address, "pending")
-
             self.log(f"{Fore.CYAN+Style.BRIGHT}Claim   :{Style.RESET_ALL}")
             
             for nft in self.NFT_LISTS:
+                network_name = nft["network"]
                 nft_name = nft["name"]
                 nft_contract_address = nft["address"]
+                nft_price = 1 if network_name == "Testnet" else 0.1
 
-                balance = await self.get_token_balance(address, use_proxy)
+                network = self.TESTNET if network_name == "Testnet" else self.ATLANTIC
 
                 self.log(
                     f"{Fore.GREEN+Style.BRIGHT} ● {Style.RESET_ALL}"
-                    f"{Fore.WHITE+Style.BRIGHT}{nft_name}{Style.RESET_ALL}                                   "
+                    f"{Fore.WHITE+Style.BRIGHT}{nft_name}{Style.RESET_ALL}"
+                    f"{Fore.MAGENTA+Style.BRIGHT} [{network_name}] {Style.RESET_ALL}                                   "
                 )
                 self.log(
                     f"{Fore.CYAN+Style.BRIGHT}   Address :{Style.RESET_ALL}"
@@ -528,10 +525,10 @@ class Grandline:
                 )
                 self.log(
                     f"{Fore.CYAN+Style.BRIGHT}   Price   :{Style.RESET_ALL}"
-                    f"{Fore.WHITE+Style.BRIGHT} 1 PHRS {Style.RESET_ALL}"
+                    f"{Fore.WHITE+Style.BRIGHT} {nft_price} PHRS {Style.RESET_ALL}"
                 )
 
-                has_claimed = await self.check_nft_status(address, nft_contract_address, use_proxy)
+                has_claimed = await self.check_nft_status(address, network, nft_contract_address, use_proxy)
                 if has_claimed:
                     self.log(
                         f"{Fore.CYAN+Style.BRIGHT}   Status  :{Style.RESET_ALL}"
@@ -539,20 +536,27 @@ class Grandline:
                     )
                     continue
 
-                balance = await self.get_token_balance(address, use_proxy)
+                balance = await self.get_token_balance(address, network, use_proxy)
                 self.log(
                     f"{Fore.CYAN+Style.BRIGHT}   Balance :{Style.RESET_ALL}"
                     f"{Fore.WHITE+Style.BRIGHT} {balance} PHRS {Style.RESET_ALL}"
                 )
 
-                if not balance or balance <= 1:
+                if balance is None:
+                    self.log(
+                        f"{Fore.CYAN+Style.BRIGHT}   Status  :{Style.RESET_ALL}"
+                        f"{Fore.YELLOW+Style.BRIGHT} Fetch PHRS Token Balance Failed {Style.RESET_ALL}"
+                    )
+                    continue
+
+                if balance <= nft_price:
                     self.log(
                         f"{Fore.CYAN+Style.BRIGHT}   Status  :{Style.RESET_ALL}"
                         f"{Fore.YELLOW+Style.BRIGHT} Insufficient PHRS Token Balance {Style.RESET_ALL}"
                     )
                     return
                 
-                await self.process_perform_claim_nft(account, address, nft_contract_address, use_proxy)
+                await self.process_perform_claim_nft(account, address, network, nft_contract_address, nft_price, use_proxy)
                 await self.print_timer()
 
     async def main(self):
@@ -565,8 +569,8 @@ class Grandline:
             print(f"\n{Fore.BLUE+Style.BRIGHT}Fetch NFT Contract Addresses...{Style.RESET_ALL}\n")
             await asyncio.sleep(1)
 
-            fetched = await self.process_fetch_nft_addresses()
-            if not fetched: return
+            for network in [self.TESTNET, self.ATLANTIC]:
+                await self.process_fetch_nft_addresses(network)
 
             while True:
                 use_proxy = True if proxy_choice == 1 else False
